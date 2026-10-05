@@ -314,6 +314,18 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           </nav>
 
+          {/* Mobile Theme Toggle */}
+          <div className="flex items-center justify-between px-3 py-2 border-t border-neutral-100 dark:border-neutral-800">
+            <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400">Appearance</span>
+            <button
+              onClick={onToggleTheme}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-800 text-xs font-medium text-neutral-800 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors"
+            >
+              {isDark ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-neutral-600" />}
+              <span>{isDark ? 'Light Mode' : 'Dark Mode'}</span>
+            </button>
+          </div>
+
           <div className="border-t border-neutral-100 dark:border-neutral-850 pt-3">
             {user ? (
               <div className="space-y-2">

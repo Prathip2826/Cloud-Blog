@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { Profile, UserRole } from '../../types/database';
 import { getSupabaseClient, isSupabaseConfigured } from '../supabase/client';
@@ -16,6 +16,8 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error?: string; success?: boolean }>;
   updateCurrentUserProfile: (data: Partial<Profile>) => Promise<Profile | null>;
+  syncProfile: (newProfile: Profile) => void;
+  refreshProfile: () => Promise<Profile | null>;
   switchDemoUser: (roleOrId: string) => void;
 }
 
@@ -29,6 +31,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const isSupabase = isSupabaseConfigured();
+  const lastSavedTimestampRef = useRef<number>(0);
+
+  // Sync profile directly to state and update timestamp to prevent race condition overwrite
+  const syncProfile = (newProfile: Profile) => {
+    lastSavedTimestampRef.current = Date.now();
+    setProfile(newProfile);
+  };
+
+  // Re-fetch profile from database for current user
+  const refreshProfile = async (): Promise<Profile | null> => {
+    if (isSupabase) {
+      const supabase = getSupabaseClient();
+      if (!supabase) return null;
+      try {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (!authUser) return null;
+
+        const prof = await getProfile(authUser.id);
+        if (prof) {
+          lastSavedTimestampRef.current = Date.now();
+          setProfile(prof);
+          return prof;
+        }
+      } catch (err) {
+        console.error('Error refreshing profile:', err);
+      }
+      return null;
+    }
+    return profile;
+  };
 
   // Initialize auth state
   useEffect(() => {
@@ -60,8 +92,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setSession(currentSession);
             if (currentSession?.user) {
               setUser({ id: currentSession.user.id, email: currentSession.user.email });
+              // Guard against race conditions: don't overwrite if user just saved profile
+              if (Date.now() - lastSavedTimestampRef.current < 2500) {
+                return;
+              }
               const prof = await getProfile(currentSession.user.id);
-              if (mounted) setProfile(prof);
+              if (mounted && prof) setProfile(prof);
             } else {
               setUser(null);
               setProfile(null);
@@ -218,7 +254,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateCurrentUserProfile = async (data: Partial<Profile>): Promise<Profile | null> => {
     if (!user) return null;
     const updated = await updateProfile(user.id, data);
-    setProfile(updated);
+    if (updated) {
+      lastSavedTimestampRef.current = Date.now();
+      setProfile(updated);
+    }
     return updated;
   };
 
@@ -247,6 +286,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signOut,
         resetPassword,
         updateCurrentUserProfile,
+        syncProfile,
+        refreshProfile,
         switchDemoUser,
       }}
     >

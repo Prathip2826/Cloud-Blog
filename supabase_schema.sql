@@ -65,7 +65,13 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 7. PROFILES RLS POLICIES
--- Anyone can view profiles
+-- Users can read their own profile
+CREATE POLICY "Users can read own profile"
+  ON public.profiles FOR SELECT
+  TO authenticated
+  USING (auth.uid() = id);
+
+-- Public profiles are viewable by everyone
 CREATE POLICY "Public profiles are viewable by everyone" 
   ON public.profiles FOR SELECT 
   USING (true);
@@ -73,12 +79,15 @@ CREATE POLICY "Public profiles are viewable by everyone"
 -- Users can insert their own profile
 CREATE POLICY "Users can insert their own profile" 
   ON public.profiles FOR INSERT 
+  TO authenticated
   WITH CHECK (auth.uid() = id);
 
--- Users can update their own profile
+-- Authenticated users can update ONLY their own profile
 CREATE POLICY "Users can update own profile" 
   ON public.profiles FOR UPDATE 
-  USING (auth.uid() = id);
+  TO authenticated
+  USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id);
 
 -- Admins can update any profile (e.g. role change)
 CREATE POLICY "Admins can update any profile" 

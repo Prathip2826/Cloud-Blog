@@ -216,20 +216,112 @@ export const DemoBadgeModal: React.FC = () => {
             <div className="pt-2 border-t border-neutral-200 dark:border-neutral-800 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-neutral-600 dark:text-neutral-400">
-                  PostgreSQL Schema & RLS File: <code className="font-mono text-neutral-900 dark:text-neutral-200">supabase_schema.sql</code>
+                  Database Setup: <code className="font-mono text-neutral-900 dark:text-neutral-200">supabase_schema.sql</code>
                 </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCopiedSql(true);
-                    toast('Schema filename copied to clipboard', 'info');
-                    setTimeout(() => setCopiedSql(false), 2000);
-                  }}
-                  className="text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-200 flex items-center gap-1"
-                >
-                  {copiedSql ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedSql ? 'Copied' : 'Copy'}</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <a
+                    href="https://supabase.com/dashboard/project/qgxmfzxbwjxmorxtlvht/sql"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-200 flex items-center gap-1"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Open SQL Editor</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const sql = `-- CHRONICLE BLOG PLATFORM SCHEMA
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  display_name TEXT NOT NULL,
+  avatar_url TEXT,
+  role TEXT CHECK (role IN ('admin', 'writer', 'reader')) DEFAULT 'writer' NOT NULL,
+  bio TEXT,
+  created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.posts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  author UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  slug TEXT UNIQUE NOT NULL,
+  excerpt TEXT,
+  markdown TEXT NOT NULL,
+  cover_image TEXT,
+  published BOOLEAN DEFAULT false NOT NULL,
+  tags TEXT[] DEFAULT '{}'::TEXT[] NOT NULL,
+  views INTEGER DEFAULT 0 NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.comments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  post_id UUID NOT NULL REFERENCES public.posts(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_posts_slug ON public.posts(slug);
+CREATE INDEX IF NOT EXISTS idx_posts_author ON public.posts(author);
+CREATE INDEX IF NOT EXISTS idx_posts_published ON public.posts(published);
+CREATE INDEX IF NOT EXISTS idx_posts_created_at ON public.posts(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_comments_post_id ON public.comments(post_id);
+
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.comments ENABLE ROW LEVEL SECURITY;
+
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND role = 'admin'
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE POLICY "Users can read own profile" ON public.profiles FOR SELECT TO authenticated USING (auth.uid() = id);
+CREATE POLICY "Public profiles are viewable by everyone" ON public.profiles FOR SELECT USING (true);
+CREATE POLICY "Users can insert their own profile" ON public.profiles FOR INSERT TO authenticated WITH CHECK (auth.uid() = id);
+CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE TO authenticated USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
+CREATE POLICY "Admins can update any profile" ON public.profiles FOR UPDATE USING (public.is_admin());
+
+CREATE POLICY "Public can view published posts" ON public.posts FOR SELECT USING (published = true);
+CREATE POLICY "Authors can view all their own posts" ON public.posts FOR SELECT USING (auth.uid() = author);
+CREATE POLICY "Admins can view all posts" ON public.posts FOR SELECT USING (public.is_admin());
+CREATE POLICY "Writers can create posts" ON public.posts FOR INSERT WITH CHECK (auth.uid() = author);
+CREATE POLICY "Authors can update own posts" ON public.posts FOR UPDATE USING (auth.uid() = author);
+CREATE POLICY "Admins can update any post" ON public.posts FOR UPDATE USING (public.is_admin());
+CREATE POLICY "Authors can delete own posts" ON public.posts FOR DELETE USING (auth.uid() = author);
+CREATE POLICY "Admins can delete any post" ON public.posts FOR DELETE USING (public.is_admin());
+
+CREATE POLICY "Anyone can view comments on published posts" ON public.comments FOR SELECT USING (EXISTS (SELECT 1 FROM public.posts WHERE posts.id = comments.post_id AND posts.published = true));
+CREATE POLICY "Authenticated users can create comments" ON public.comments FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can delete own comments" ON public.comments FOR DELETE USING (auth.uid() = user_id);
+CREATE POLICY "Admins can delete any comment" ON public.comments FOR DELETE USING (public.is_admin());
+
+INSERT INTO storage.buckets (id, name, public) VALUES ('blog-images', 'blog-images', true) ON CONFLICT (id) DO NOTHING;
+CREATE POLICY "Public Read blog-images" ON storage.objects FOR SELECT USING (bucket_id = 'blog-images');
+CREATE POLICY "Authenticated Upload blog-images" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'blog-images' AND auth.role() = 'authenticated');
+`;
+                      await navigator.clipboard.writeText(sql);
+                      setCopiedSql(true);
+                      toast('Full SQL schema copied to clipboard! Paste into your Supabase SQL editor.', 'success');
+                      setTimeout(() => setCopiedSql(false), 2500);
+                    }}
+                    className="text-xs font-medium text-neutral-800 dark:text-neutral-200 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    {copiedSql ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedSql ? 'Copied SQL!' : 'Copy SQL Schema'}</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>

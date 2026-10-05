@@ -434,14 +434,49 @@ export async function getProfile(userId: string): Promise<Profile | null> {
     const supabase = getSupabaseClient();
     if (!supabase) return null;
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
 
-    if (error) return null;
-    return data as Profile;
+      if (error) {
+        console.error('Supabase getProfile error:', error.message);
+        return null;
+      }
+
+      if (data) {
+        return data as Profile;
+      }
+
+      // If user profile record does not exist in public.profiles yet, initialize it
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user && authData.user.id === userId) {
+        const defaultProfile = {
+          id: userId,
+          display_name: authData.user.user_metadata?.display_name || authData.user.email?.split('@')[0] || 'Author',
+          avatar_url: authData.user.user_metadata?.avatar_url || null,
+          role: authData.user.user_metadata?.role || 'writer',
+          updated_at: new Date().toISOString(),
+        };
+
+        const { data: created, error: insertError } = await supabase
+          .from('profiles')
+          .insert(defaultProfile)
+          .select()
+          .maybeSingle();
+
+        if (!insertError && created) {
+          return created as Profile;
+        }
+      }
+
+      return null;
+    } catch (err: any) {
+      console.error('Supabase getProfile exception:', err);
+      return null;
+    }
   }
 
   // Demo Fallback
@@ -454,6 +489,35 @@ export async function updateProfile(userId: string, data: Partial<Profile>): Pro
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase not connected');
 
+    // Check if profile exists first
+    const { data: existing } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (!existing) {
+      const insertData = {
+        id: userId,
+        display_name: data.display_name?.trim() || 'Author',
+        avatar_url: data.avatar_url?.trim() || null,
+        bio: data.bio?.trim() || null,
+        role: data.role || 'writer',
+        updated_at: new Date().toISOString(),
+      };
+      const { data: created, error: insertError } = await supabase
+        .from('profiles')
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('Error inserting profile in Supabase:', insertError);
+        throw insertError;
+      }
+      return created as Profile;
+    }
+
     const { data: updated, error } = await supabase
       .from('profiles')
       .update({
@@ -464,7 +528,10 @@ export async function updateProfile(userId: string, data: Partial<Profile>): Pro
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error updating profile in Supabase:', error);
+      throw error;
+    }
     return updated as Profile;
   }
 
