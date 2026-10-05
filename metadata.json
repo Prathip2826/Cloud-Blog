@@ -1,0 +1,6 @@
+{
+  "name": "Chronicle - Cloud-Based Editorial & Blog Platform",
+  "description": "Production-grade cloud-based blog platform with Supabase authentication, PostgreSQL RLS, storage uploads, writer and admin dashboards, and dynamic Markdown rendering.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
