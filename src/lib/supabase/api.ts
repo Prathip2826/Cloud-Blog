@@ -1,6 +1,14 @@
 import { Post, Profile, Comment, AdminStats, UserRole } from '../../types/database';
 import { getSupabaseClient, isSupabaseConfigured } from './client';
 import { INITIAL_POSTS, INITIAL_PROFILES, INITIAL_COMMENTS } from './mockData';
+import { LOCAL_ASSET_IMAGES } from './storage';
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isUuid(id: string | null | undefined): boolean {
+  if (!id || typeof id !== 'string') return false;
+  return UUID_REGEX.test(id.trim());
+}
 
 const MOCK_STORAGE_KEYS = {
   POSTS: 'chronicle_mock_posts',
@@ -17,7 +25,22 @@ function getStoredMock<T>(key: string, defaultVal: T): T {
     return defaultVal;
   }
   try {
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (key === MOCK_STORAGE_KEYS.POSTS && Array.isArray(parsed)) {
+      let migrated = false;
+      const updated = parsed.map((item: any) => {
+        if (item?.cover_image && LOCAL_ASSET_IMAGES[item.cover_image]) {
+          migrated = true;
+          return { ...item, cover_image: LOCAL_ASSET_IMAGES[item.cover_image] };
+        }
+        return item;
+      });
+      if (migrated) {
+        localStorage.setItem(key, JSON.stringify(updated));
+      }
+      return updated as T;
+    }
+    return parsed;
   } catch {
     return defaultVal;
   }
@@ -182,18 +205,21 @@ export async function getPostBySlug(slug: string): Promise<Post | null> {
 }
 
 export async function getPostById(id: string): Promise<Post | null> {
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && isUuid(id)) {
     const supabase = getSupabaseClient();
     if (!supabase) return null;
 
-    const { data, error } = await supabase
-      .from('posts')
-      .select('*, profiles(*)')
-      .eq('id', id)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*, profiles(*)')
+        .eq('id', id)
+        .single();
 
-    if (error) return null;
-    return data as Post;
+      if (!error && data) return data as Post;
+    } catch {
+      // ignore and try fallback
+    }
   }
 
   // Demo Fallback
@@ -254,7 +280,7 @@ export async function createPost(postData: Omit<Post, 'id' | 'created_at' | 'upd
 }
 
 export async function updatePost(id: string, updates: Partial<Post>): Promise<Post> {
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && isUuid(id)) {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase not connected');
 
@@ -291,7 +317,7 @@ export async function updatePost(id: string, updates: Partial<Post>): Promise<Po
 }
 
 export async function deletePost(id: string): Promise<boolean> {
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && isUuid(id)) {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase not connected');
 
@@ -308,7 +334,7 @@ export async function deletePost(id: string): Promise<boolean> {
 }
 
 export async function incrementPostViews(id: string): Promise<void> {
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && isUuid(id)) {
     const supabase = getSupabaseClient();
     if (!supabase) return;
     try {
@@ -338,21 +364,26 @@ export async function incrementPostViews(id: string): Promise<void> {
 // -------------------------------------------------------------
 
 export async function getComments(postId: string): Promise<Comment[]> {
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && isUuid(postId)) {
     const supabase = getSupabaseClient();
     if (!supabase) return [];
 
-    const { data, error } = await supabase
-      .from('comments')
-      .select('*, profiles(*)')
-      .eq('post_id', postId)
-      .order('created_at', { ascending: true });
+    try {
+      const { data, error } = await supabase
+        .from('comments')
+        .select('*, profiles(*)')
+        .eq('post_id', postId)
+        .order('created_at', { ascending: true });
 
-    if (error) {
-      console.error('Supabase getComments error:', error);
+      if (error) {
+        console.warn('Supabase getComments notice:', error.message);
+        return [];
+      }
+      return (data as Comment[]) || [];
+    } catch (err: any) {
+      console.warn('Supabase getComments exception:', err?.message);
       return [];
     }
-    return data as Comment[];
   }
 
   // Demo Fallback
@@ -371,7 +402,7 @@ export async function getComments(postId: string): Promise<Comment[]> {
 export async function createComment(postId: string, userId: string, body: string): Promise<Comment> {
   if (!body.trim()) throw new Error('Comment cannot be empty');
 
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && isUuid(postId) && isUuid(userId)) {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase not connected');
 
@@ -409,7 +440,7 @@ export async function createComment(postId: string, userId: string, body: string
 }
 
 export async function deleteComment(commentId: string): Promise<boolean> {
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && isUuid(commentId)) {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase not connected');
 
@@ -430,7 +461,7 @@ export async function deleteComment(commentId: string): Promise<boolean> {
 // -------------------------------------------------------------
 
 export async function getProfile(userId: string): Promise<Profile | null> {
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && isUuid(userId)) {
     const supabase = getSupabaseClient();
     if (!supabase) return null;
 
@@ -456,8 +487,6 @@ export async function getProfile(userId: string): Promise<Profile | null> {
         const defaultProfile = {
           id: userId,
           display_name: authData.user.user_metadata?.display_name || authData.user.email?.split('@')[0] || 'Author',
-          avatar_url: authData.user.user_metadata?.avatar_url || null,
-          role: authData.user.user_metadata?.role || 'writer',
           updated_at: new Date().toISOString(),
         };
 
@@ -485,9 +514,20 @@ export async function getProfile(userId: string): Promise<Profile | null> {
 }
 
 export async function updateProfile(userId: string, data: Partial<Profile>): Promise<Profile> {
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && isUuid(userId)) {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase not connected');
+
+    // Build base update object with guaranteed columns
+    const safeUpdate: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (data.display_name !== undefined) {
+      safeUpdate.display_name = data.display_name.trim();
+    }
+    if (data.role !== undefined) {
+      safeUpdate.role = data.role;
+    }
 
     // Check if profile exists first
     const { data: existing } = await supabase
@@ -497,14 +537,13 @@ export async function updateProfile(userId: string, data: Partial<Profile>): Pro
       .maybeSingle();
 
     if (!existing) {
-      const insertData = {
+      const insertData: Record<string, any> = {
         id: userId,
         display_name: data.display_name?.trim() || 'Author',
-        avatar_url: data.avatar_url?.trim() || null,
-        bio: data.bio?.trim() || null,
-        role: data.role || 'writer',
         updated_at: new Date().toISOString(),
       };
+      if (data.role) insertData.role = data.role;
+
       const { data: created, error: insertError } = await supabase
         .from('profiles')
         .insert(insertData)
@@ -520,10 +559,7 @@ export async function updateProfile(userId: string, data: Partial<Profile>): Pro
 
     const { data: updated, error } = await supabase
       .from('profiles')
-      .update({
-        ...data,
-        updated_at: new Date().toISOString(),
-      })
+      .update(safeUpdate)
       .eq('id', userId)
       .select()
       .single();
@@ -532,7 +568,31 @@ export async function updateProfile(userId: string, data: Partial<Profile>): Pro
       console.error('Error updating profile in Supabase:', error);
       throw error;
     }
-    return updated as Profile;
+
+    // Attempt optional columns safely
+    if (data.avatar_url) {
+      try {
+        await supabase
+          .from('profiles')
+          .update({ avatar_url: data.avatar_url.trim() })
+          .eq('id', userId);
+      } catch (_) {}
+    }
+
+    if (data.bio) {
+      try {
+        await supabase
+          .from('profiles')
+          .update({ bio: data.bio.trim() })
+          .eq('id', userId);
+      } catch (_) {}
+    }
+
+    return {
+      ...updated,
+      avatar_url: data.avatar_url || updated.avatar_url,
+      bio: data.bio || updated.bio,
+    } as Profile;
   }
 
   // Demo Fallback
@@ -581,7 +641,7 @@ export async function getAllUsers(): Promise<Profile[]> {
 }
 
 export async function updateUserRole(userId: string, role: UserRole): Promise<void> {
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && isUuid(userId)) {
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase not connected');
 

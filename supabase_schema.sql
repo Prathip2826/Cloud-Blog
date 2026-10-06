@@ -16,6 +16,12 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
+-- Idempotent column additions in case table was created with partial schema
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS bio TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'writer';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW());
+
 -- 3. POSTS TABLE
 CREATE TABLE IF NOT EXISTS public.posts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -204,24 +210,39 @@ CREATE TRIGGER on_auth_user_created
 -- 12. SUPABASE STORAGE BUCKET CREATION & POLICIES
 INSERT INTO storage.buckets (id, name, public) 
 VALUES ('blog-images', 'blog-images', true)
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET public = true;
 
 -- Public can read images in 'blog-images'
 CREATE POLICY "Public Read blog-images" 
   ON storage.objects FOR SELECT 
   USING (bucket_id = 'blog-images');
 
--- Authenticated users can upload to their own user folder in 'blog-images'
-CREATE POLICY "Authenticated Upload blog-images" 
+-- Authenticated users can upload only to their own user folder: blog-images/{user.id}/...
+CREATE POLICY "Authenticated users can upload to own folder" 
   ON storage.objects FOR INSERT 
+  TO authenticated
   WITH CHECK (
     bucket_id = 'blog-images' AND 
-    auth.role() = 'authenticated'
+    auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+-- Users can update files inside their own user folder
+CREATE POLICY "Users can update own files in blog-images"
+  ON storage.objects FOR UPDATE
+  TO authenticated
+  USING (
+    bucket_id = 'blog-images' AND 
+    auth.uid()::text = (storage.foldername(name))[1]
+  )
+  WITH CHECK (
+    bucket_id = 'blog-images' AND 
+    auth.uid()::text = (storage.foldername(name))[1]
   );
 
 -- Users can delete their own uploaded images
 CREATE POLICY "Users Delete Own Images" 
   ON storage.objects FOR DELETE 
+  TO authenticated
   USING (
     bucket_id = 'blog-images' AND 
     auth.uid()::text = (storage.foldername(name))[1]

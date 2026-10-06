@@ -62,33 +62,30 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigate }) => {
 
           if (dbProfile && isMounted) {
             setDisplayName(dbProfile.display_name || '');
-            setAvatarUrl(dbProfile.avatar_url || '');
-            setBio(dbProfile.bio || '');
+            setAvatarUrl(dbProfile.avatar_url || authUser.user_metadata?.avatar_url || '');
+            setBio(dbProfile.bio || authUser.user_metadata?.bio || '');
             syncProfile(dbProfile);
           } else if (!dbProfile && isMounted) {
-            // Profile row does not exist yet; auto-initialize in public.profiles
+            // Profile row does not exist yet; auto-initialize in public.profiles with safe columns
             const defaultName =
               authUser.user_metadata?.display_name ||
               authUser.email?.split('@')[0] ||
               'Author';
-            const initialRole = authUser.user_metadata?.role || 'writer';
 
             const { data: created, error: insertError } = await supabase
               .from('profiles')
               .insert({
                 id: authUser.id,
                 display_name: defaultName,
-                avatar_url: authUser.user_metadata?.avatar_url || null,
-                role: initialRole,
                 updated_at: new Date().toISOString(),
               })
               .select()
               .maybeSingle();
 
             if (!insertError && created && isMounted) {
-              setDisplayName(created.display_name || '');
-              setAvatarUrl(created.avatar_url || '');
-              setBio(created.bio || '');
+              setDisplayName(created.display_name || defaultName);
+              setAvatarUrl(authUser.user_metadata?.avatar_url || '');
+              setBio(authUser.user_metadata?.bio || '');
               syncProfile(created);
             } else if (isMounted) {
               setDisplayName(defaultName);
@@ -177,15 +174,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigate }) => {
           .maybeSingle();
 
         if (!existingProfile) {
-          // If row doesn't exist yet, insert with display_name
+          // If row doesn't exist yet, insert with display_name and updated_at
           const { error: insertError } = await supabase
             .from('profiles')
             .insert({
               id: authUser.id,
               display_name: trimmedName,
-              avatar_url: avatarUrl.trim() || null,
-              bio: bio.trim() || null,
-              role: profile?.role || 'writer',
               updated_at: new Date().toISOString(),
             });
 
@@ -195,12 +189,11 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigate }) => {
           }
         } else {
           // Execute update on public.profiles identified by auth.uid() = profiles.id
+          // Specifically updates display_name and updated_at as required by schema
           const { error: updateError } = await supabase
             .from('profiles')
             .update({
               display_name: trimmedName,
-              avatar_url: avatarUrl.trim() || null,
-              bio: bio.trim() || null,
               updated_at: new Date().toISOString(),
             })
             .eq('id', authUser.id);
@@ -210,6 +203,40 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigate }) => {
             throw updateError;
           }
         }
+
+        // Optional columns (avatar_url, bio): safely attempt update without blocking if columns do not exist
+        if (avatarUrl.trim()) {
+          try {
+            await supabase
+              .from('profiles')
+              .update({ avatar_url: avatarUrl.trim() })
+              .eq('id', authUser.id);
+          } catch (_) {
+            // Safely ignore if column does not exist
+          }
+        }
+
+        if (bio.trim()) {
+          try {
+            await supabase
+              .from('profiles')
+              .update({ bio: bio.trim() })
+              .eq('id', authUser.id);
+          } catch (_) {
+            // Safely ignore if column does not exist
+          }
+        }
+
+        // Keep Supabase Auth metadata updated as well
+        try {
+          await supabase.auth.updateUser({
+            data: {
+              display_name: trimmedName,
+              avatar_url: avatarUrl.trim() || undefined,
+              bio: bio.trim() || undefined,
+            },
+          });
+        } catch (_) {}
 
         // 8. After saving, refresh/re-fetch the profile from Supabase so refreshing keeps the new name
         const { data: refreshedProfile, error: fetchError } = await supabase
@@ -226,10 +253,16 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigate }) => {
         // 10 & 11. Sync profile immediately with AuthContext to prevent race conditions
         // and ensure Navbar, Dashboard, Profile page, comments use persisted data
         if (refreshedProfile) {
-          syncProfile(refreshedProfile);
-          setDisplayName(refreshedProfile.display_name);
-          setAvatarUrl(refreshedProfile.avatar_url || '');
-          setBio(refreshedProfile.bio || '');
+          const merged: Profile = {
+            ...refreshedProfile,
+            display_name: refreshedProfile.display_name || trimmedName,
+            avatar_url: refreshedProfile.avatar_url || avatarUrl.trim() || undefined,
+            bio: refreshedProfile.bio || bio.trim() || undefined,
+          };
+          syncProfile(merged);
+          setDisplayName(merged.display_name);
+          if (merged.avatar_url) setAvatarUrl(merged.avatar_url);
+          if (merged.bio) setBio(merged.bio);
         }
 
         // 3. Show success toast only after database update succeeds

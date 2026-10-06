@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { Post } from '../../types/database';
+import { getCoverImageUrl } from '../../lib/supabase/storage';
 
 interface FeaturedPostProps {
   post: Post;
@@ -8,6 +9,9 @@ interface FeaturedPostProps {
 }
 
 export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post, onSelect }) => {
+  const [imageError, setImageError] = useState(false);
+  const imageUrl = getCoverImageUrl(post.cover_image);
+
   const wordCount = post.markdown ? post.markdown.trim().split(/\s+/).length : 0;
   const readTime = Math.max(1, Math.ceil(wordCount / 200));
 
@@ -34,17 +38,29 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post, onSelect }) =>
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-0">
         {/* Cover Image Container */}
         <div className="lg:col-span-7 aspect-16/10 lg:aspect-auto overflow-hidden bg-neutral-100 dark:bg-neutral-850 relative min-h-[260px] sm:min-h-[320px]">
-          {post.cover_image ? (
+          {imageUrl && !imageError ? (
             <img
-              src={post.cover_image}
+              src={imageUrl}
               alt={post.title}
               referrerPolicy="no-referrer"
               className="w-full h-full object-cover group-hover:scale-[1.015] transition-transform duration-300 ease-out"
               loading="eager"
+              onError={(event) => {
+                console.error('Cover image failed to load:', {
+                  url: imageUrl,
+                  coverImage: post.cover_image,
+                });
+                setImageError(true);
+              }}
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center bg-neutral-200 dark:bg-neutral-800">
-              <span className="font-serif text-3xl italic text-neutral-400 font-bold">Featured Inquiry</span>
+            <div className="w-full h-full flex flex-col items-center justify-center p-8 bg-gradient-to-br from-neutral-100 to-neutral-200 dark:from-neutral-900 dark:to-neutral-800 text-neutral-400 select-none min-h-[260px] sm:min-h-[320px]">
+              <span className="font-serif text-4xl italic font-bold text-neutral-400 dark:text-neutral-500 mb-2">
+                {post.title.charAt(0) || 'C'}
+              </span>
+              <span className="text-xs font-mono uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
+                Chronicle Featured Inquiry
+              </span>
             </div>
           )}
         </div>

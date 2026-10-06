@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Post } from '../types/database';
 import { getPostBySlug, getPosts, incrementPostViews } from '../lib/supabase/api';
+import { getCoverImageUrl } from '../lib/supabase/storage';
 import { ShareButtons } from '../components/blog/ShareButtons';
 import { CommentSection } from '../components/comments/CommentSection';
 import { SeoInspectorModal } from '../components/ui/SeoInspectorModal';
@@ -22,6 +23,7 @@ export const BlogPostPage: React.FC<BlogPostPageProps> = ({ slug, onNavigate }) 
   const [allPosts, setAllPosts] = useState<Post[]>([]);
   const [isSeoModalOpen, setIsSeoModalOpen] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
+  const [coverError, setCoverError] = useState(false);
 
   // Scroll progress indicator
   useEffect(() => {
@@ -59,6 +61,7 @@ export const BlogPostPage: React.FC<BlogPostPageProps> = ({ slug, onNavigate }) 
       }
     }
 
+    setCoverError(false);
     loadPostData();
 
     return () => {
@@ -200,13 +203,20 @@ export const BlogPostPage: React.FC<BlogPostPageProps> = ({ slug, onNavigate }) 
         </header>
 
         {/* Cover Image */}
-        {post.cover_image && (
+        {getCoverImageUrl(post.cover_image) && !coverError && (
           <div className="aspect-16/9 w-full rounded-2xl overflow-hidden bg-neutral-100 dark:bg-neutral-850 shadow-2xs">
             <img
-              src={post.cover_image}
+              src={getCoverImageUrl(post.cover_image)}
               alt={post.title}
               referrerPolicy="no-referrer"
               className="w-full h-full object-cover"
+              onError={(event) => {
+                console.error('Cover image failed to load:', {
+                  url: getCoverImageUrl(post.cover_image),
+                  coverImage: post.cover_image,
+                });
+                setCoverError(true);
+              }}
             />
           </div>
         )}

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Search, Plus, Edit2, Trash2, Copy, ExternalLink, X, FileText, CheckCircle2, Clock } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, Copy, ExternalLink, X, FileText, Image as ImageIcon } from 'lucide-react';
 import { Post } from '../../types/database';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { EmptyState } from '../ui/EmptyState';
+import { getCoverImageUrl } from '../../lib/supabase/storage';
 
 interface PostsTableProps {
   posts: Post[];
@@ -147,17 +148,42 @@ export const PostsTable: React.FC<PostsTableProps> = ({
                     year: 'numeric',
                   });
 
+                  const coverUrl = getCoverImageUrl(post.cover_image);
+
                   return (
                     <tr
                       key={post.id}
                       className="hover:bg-neutral-50/60 dark:hover:bg-neutral-850/50 transition-colors group"
                     >
                       <td className="py-3.5 px-4 max-w-sm">
-                        <div className="font-serif font-bold text-neutral-900 dark:text-neutral-100 truncate text-[13px]">
-                          {post.title}
-                        </div>
-                        <div className="text-[11px] font-mono text-neutral-400 dark:text-neutral-500 truncate mt-0.5">
-                          /blog/{post.slug}
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-neutral-100 dark:bg-neutral-800 border border-neutral-200/80 dark:border-neutral-700/80 flex items-center justify-center">
+                            {coverUrl ? (
+                              <img
+                                src={coverUrl}
+                                alt=""
+                                referrerPolicy="no-referrer"
+                                className="w-full h-full object-cover"
+                                onError={(event) => {
+                                  console.error('Cover image failed to load:', {
+                                    url: coverUrl,
+                                    coverImage: post.cover_image,
+                                  });
+                                  (event.target as HTMLElement).style.display = 'none';
+                                }}
+                              />
+                            ) : (
+                              <ImageIcon className="w-4 h-4 text-neutral-400 dark:text-neutral-500" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-serif font-bold text-neutral-900 dark:text-neutral-100 truncate text-[13px]">
+                              {post.title}
+                            </div>
+                            <div className="text-[11px] font-mono text-neutral-400 dark:text-neutral-500 truncate mt-0.5">
+                              /blog/{post.slug}
+                            </div>
+                          </div>
                         </div>
                       </td>
 

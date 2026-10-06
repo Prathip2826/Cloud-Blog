@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Post } from '../../types/database';
 import { ArrowUpRight } from 'lucide-react';
+import { getCoverImageUrl } from '../../lib/supabase/storage';
 
 interface PostCardProps {
   post: Post;
@@ -9,6 +10,9 @@ interface PostCardProps {
 }
 
 export const PostCard: React.FC<PostCardProps> = ({ post, onSelect, priority = false }) => {
+  const [imageError, setImageError] = useState(false);
+  const imageUrl = getCoverImageUrl(post.cover_image);
+
   // Reading time estimate (approx 200 words/min)
   const wordCount = post.markdown ? post.markdown.trim().split(/\s+/).length : 0;
   const readTime = Math.max(1, Math.ceil(wordCount / 200));
@@ -36,18 +40,28 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onSelect, priority = f
       <div>
         {/* Cover image container */}
         <div className="aspect-16/10 w-full overflow-hidden bg-neutral-100 dark:bg-neutral-850 relative">
-          {post.cover_image ? (
+          {imageUrl && !imageError ? (
             <img
-              src={post.cover_image}
+              src={imageUrl}
               alt={post.title}
               referrerPolicy="no-referrer"
               className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300 ease-out"
               loading={priority ? 'eager' : 'lazy'}
+              onError={(event) => {
+                console.error('Cover image failed to load:', {
+                  url: imageUrl,
+                  coverImage: post.cover_image,
+                });
+                setImageError(true);
+              }}
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center p-6 bg-gradient-to-br from-neutral-100 to-neutral-200 dark:from-neutral-900 dark:to-neutral-800 text-neutral-400">
-              <span className="font-serif text-xl italic font-semibold text-neutral-500">
-                {post.title.charAt(0)}
+            <div className="w-full h-full flex flex-col items-center justify-center p-6 bg-gradient-to-br from-neutral-100 to-neutral-200 dark:from-neutral-900 dark:to-neutral-800 text-neutral-400 select-none">
+              <span className="font-serif text-3xl italic font-bold text-neutral-400 dark:text-neutral-500 mb-1">
+                {post.title.charAt(0) || 'C'}
+              </span>
+              <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+                Chronicle Article
               </span>
             </div>
           )}

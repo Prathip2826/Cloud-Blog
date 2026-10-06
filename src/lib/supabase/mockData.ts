@@ -1,4 +1,8 @@
 import { Profile, Post, Comment } from '../../types/database';
+import heroCloudImg from '../../assets/images/hero_cloud_architecture_1791130352186.jpg';
+import edgeImg from '../../assets/images/post_edge_computing_1791130363488.jpg';
+import typographyImg from '../../assets/images/post_editorial_typography_1791130380254.jpg';
+import postgresImg from '../../assets/images/post_postgres_database_1791130393163.jpg';
 
 export const INITIAL_PROFILES: Profile[] = [
   {
@@ -50,7 +54,7 @@ export const INITIAL_POSTS: Post[] = [
     title: 'Designing High-Resilience Cloud Systems: From Edge Routing to Global Consensus',
     slug: 'designing-high-resilience-cloud-systems',
     excerpt: 'An architectural deep dive into constructing partition-tolerant multi-region clusters, failover topologies, and latency budgets for enterprise backbones.',
-    cover_image: '/src/assets/images/hero_cloud_architecture_1791130352186.jpg',
+    cover_image: heroCloudImg,
     published: true,
     tags: ['Architecture', 'Cloud', 'Distributed Systems'],
     views: 1420,
@@ -96,7 +100,7 @@ By adopting these principles, organizations achieve 99.999% service availability
     title: 'Zero-Cold-Start Compute at the Network Boundary',
     slug: 'zero-cold-start-compute-network-boundary',
     excerpt: 'How V8 isolate runtimes and WebAssembly sandboxes allow sub-5 millisecond serverless execution at 300+ edge locations worldwide.',
-    cover_image: '/src/assets/images/post_edge_computing_1791130363488.jpg',
+    cover_image: edgeImg,
     published: true,
     tags: ['Edge', 'Performance', 'Serverless'],
     views: 980,
@@ -130,7 +134,7 @@ Deploying compute directly to Points of Presence (PoPs) adjacent to the user com
     title: 'The Typographic Mind: Designing Digital Literature for Maximum Retention',
     slug: 'typographic-mind-digital-literature',
     excerpt: 'Exploring the cognitive science of eye fixation, optical serifs, typographic rhythm, and responsive measure in long-form digital publishing.',
-    cover_image: '/src/assets/images/post_editorial_typography_1791130380254.jpg',
+    cover_image: typographyImg,
     published: true,
     tags: ['Design', 'Typography', 'UX'],
     views: 1250,
@@ -160,7 +164,7 @@ By treating typography as an architectural discipline rather than cosmetic decor
     title: 'PostgreSQL at Scale: Row Level Security, B-Tree Indexes, and Query Plans',
     slug: 'postgresql-at-scale-rls-indexes',
     excerpt: 'A comprehensive investigation into Postgres index selectivity, EXPLAIN ANALYZE execution trees, and airtight Row Level Security policies.',
-    cover_image: '/src/assets/images/post_postgres_database_1791130393163.jpg',
+    cover_image: postgresImg,
     published: true,
     tags: ['PostgreSQL', 'Database', 'Security'],
     views: 1680,
@@ -210,7 +214,7 @@ By utilizing partial indexes, we keep index bloat minimal while ensuring instant
     title: 'The Blueprint for High-Throughput Content Caching',
     slug: 'blueprint-high-throughput-content-caching',
     excerpt: 'Draft strategies for surrogate keys, stale-while-revalidate invalidation, and edge streaming.',
-    cover_image: '/src/assets/images/hero_cloud_architecture_1791130352186.jpg',
+    cover_image: heroCloudImg,
     published: false, // Draft post for writer
     tags: ['Architecture', 'Performance', 'Caching'],
     views: 14,

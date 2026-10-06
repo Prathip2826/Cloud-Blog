@@ -21,7 +21,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Post } from '../../types/database';
-import { uploadBlogImage } from '../../lib/supabase/storage';
+import { uploadBlogImage, getCoverImageUrl } from '../../lib/supabase/storage';
 import { useAuth } from '../../lib/auth/AuthContext';
 import { useToast } from '../ui/Toast';
 
@@ -55,6 +55,9 @@ export const PostEditor: React.FC<PostEditorProps> = ({
   const [excerpt, setExcerpt] = useState(initialPost?.excerpt || '');
   const [markdown, setMarkdown] = useState(initialPost?.markdown || '');
   const [coverImage, setCoverImage] = useState(initialPost?.cover_image || '');
+  const [previewUrl, setPreviewUrl] = useState(() => getCoverImageUrl(initialPost?.cover_image));
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [imageError, setImageError] = useState(false);
   const [published, setPublished] = useState(initialPost?.published ?? false);
   const [tags, setTags] = useState<string[]>(initialPost?.tags || []);
   const [tagInput, setTagInput] = useState('');
@@ -66,6 +69,33 @@ export const PostEditor: React.FC<PostEditorProps> = ({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const tempBlobUrlRef = useRef<string | null>(null);
+
+  // Sync state if initialPost changes (e.g. edit mode re-fetch)
+  useEffect(() => {
+    if (initialPost) {
+      setTitle(initialPost.title || '');
+      setSlug(initialPost.slug || '');
+      setIsSlugManual(Boolean(initialPost.slug));
+      setExcerpt(initialPost.excerpt || '');
+      setMarkdown(initialPost.markdown || '');
+      setCoverImage(initialPost.cover_image || '');
+      setPreviewUrl(getCoverImageUrl(initialPost.cover_image));
+      setSelectedFile(null);
+      setImageError(false);
+      setPublished(initialPost.published ?? false);
+      setTags(initialPost.tags || []);
+    }
+  }, [initialPost]);
+
+  // Revoke any pending object URLs on unmount
+  useEffect(() => {
+    return () => {
+      if (tempBlobUrlRef.current) {
+        URL.revokeObjectURL(tempBlobUrlRef.current);
+      }
+    };
+  }, []);
 
   // Auto-generate slug from title if not manually customized
   useEffect(() => {
@@ -130,19 +160,68 @@ export const PostEditor: React.FC<PostEditorProps> = ({
       return;
     }
 
-    setUploadProgress(15);
-    const result = await uploadBlogImage(file, user.id, (prog) => setUploadProgress(prog));
-
-    if (result.error) {
-      toast(result.error, 'error');
-      setUploadProgress(null);
-      return;
+    // Requirement 4: Immediately show local preview using URL.createObjectURL(file)
+    if (tempBlobUrlRef.current) {
+      URL.revokeObjectURL(tempBlobUrlRef.current);
     }
+    const tempUrl = URL.createObjectURL(file);
+    tempBlobUrlRef.current = tempUrl;
+    setPreviewUrl(tempUrl);
+    setSelectedFile(file);
+    setImageError(false);
+    setUploadProgress(15);
 
-    setCoverImage(result.url);
-    setUploadProgress(null);
+    try {
+      const result = await uploadBlogImage(file, user.id, (prog) => setUploadProgress(prog));
+
+      if (result.error) {
+        toast(result.error, 'error');
+        setUploadProgress(null);
+        if (tempBlobUrlRef.current) {
+          URL.revokeObjectURL(tempBlobUrlRef.current);
+          tempBlobUrlRef.current = null;
+        }
+        setPreviewUrl(getCoverImageUrl(coverImage));
+        return;
+      }
+
+      // Requirement 4: After upload succeeds, replace temporary preview with real Supabase image URL
+      if (tempBlobUrlRef.current) {
+        URL.revokeObjectURL(tempBlobUrlRef.current);
+        tempBlobUrlRef.current = null;
+      }
+
+      // Requirement 2 & 3: Store ONLY data.path in form state, keep previewUrl, keep selectedFile
+      setCoverImage(result.path);
+      setPreviewUrl(result.url);
+      setSelectedFile(file);
+      setImageError(false);
+      setUploadProgress(null);
+      markDirty();
+      toast('Cover image uploaded successfully', 'success');
+    } catch (err: any) {
+      console.error('Upload failed:', err);
+      toast(err.message || 'Image upload failed', 'error');
+      setUploadProgress(null);
+      if (tempBlobUrlRef.current) {
+        URL.revokeObjectURL(tempBlobUrlRef.current);
+        tempBlobUrlRef.current = null;
+      }
+      setPreviewUrl(getCoverImageUrl(coverImage));
+    }
+  };
+
+  // Requirement 8: Remove button only removes image from form state, does not auto-delete remote object
+  const handleRemoveCoverImage = () => {
+    if (tempBlobUrlRef.current) {
+      URL.revokeObjectURL(tempBlobUrlRef.current);
+      tempBlobUrlRef.current = null;
+    }
+    setCoverImage('');
+    setPreviewUrl('');
+    setSelectedFile(null);
+    setImageError(false);
     markDirty();
-    toast('Cover image uploaded successfully', 'success');
   };
 
   const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -327,13 +406,10 @@ export const PostEditor: React.FC<PostEditorProps> = ({
             <label className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500 font-mono">
               Cover Image (Supabase Storage: blog-images)
             </label>
-            {coverImage && (
+            {(coverImage || previewUrl) && (
               <button
                 type="button"
-                onClick={() => {
-                  setCoverImage('');
-                  markDirty();
-                }}
+                onClick={handleRemoveCoverImage}
                 className="text-[11px] text-rose-500 hover:underline cursor-pointer"
               >
                 Remove image
@@ -341,13 +417,33 @@ export const PostEditor: React.FC<PostEditorProps> = ({
             )}
           </div>
 
-          {coverImage ? (
+          {previewUrl && !imageError ? (
             <div className="relative aspect-16/9 max-w-md rounded-xl overflow-hidden border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-800">
               <img
-                src={coverImage}
+                src={previewUrl}
                 alt="Cover preview"
                 className="w-full h-full object-cover"
+                onError={(event) => {
+                  console.error('Cover image failed to load:', {
+                    url: previewUrl,
+                    coverImage: coverImage,
+                  });
+                  setImageError(true);
+                }}
               />
+              {uploadProgress !== null && (
+                <div className="absolute inset-0 bg-black/50 backdrop-blur-xs flex flex-col items-center justify-center p-4">
+                  <div className="text-white text-xs font-mono mb-2">
+                    Uploading to storage... {uploadProgress}%
+                  </div>
+                  <div className="w-full max-w-xs bg-white/20 h-1.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-white h-full transition-all duration-150"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Search, X, ArrowRight, Tag, BookOpen } from 'lucide-react';
+import { Search, X, ArrowRight, Tag, BookOpen, Image as ImageIcon } from 'lucide-react';
 import { Post } from '../../types/database';
 import { getPosts } from '../../lib/supabase/api';
+import { getCoverImageUrl } from '../../lib/supabase/storage';
 
 interface SearchModalProps {
   isOpen: boolean;
@@ -105,33 +106,56 @@ export const SearchModal: React.FC<SearchModalProps> = ({
           {loading ? (
             <div className="py-12 text-center text-xs text-neutral-400">Searching publications...</div>
           ) : results.length > 0 ? (
-            results.map((post) => (
-              <div
-                key={post.id}
-                onClick={() => {
-                  onSelectPost(post.slug);
-                  onClose();
-                }}
-                className="group flex items-start justify-between p-3 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800/60 transition-colors cursor-pointer"
-              >
-                <div className="space-y-1 pr-4">
-                  <div className="flex items-center gap-2 text-[11px] text-neutral-400 font-mono">
-                    <span>{post.tags[0] || 'Article'}</span>
-                    <span aria-hidden="true">·</span>
-                    <span className="tabular-nums">
-                      {new Date(post.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                    </span>
+            results.map((post) => {
+              const coverUrl = getCoverImageUrl(post.cover_image);
+
+              return (
+                <div
+                  key={post.id}
+                  onClick={() => {
+                    onSelectPost(post.slug);
+                    onClose();
+                  }}
+                  className="group flex items-center justify-between p-3 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800/60 transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center gap-3 pr-4 min-w-0">
+                    {coverUrl && (
+                      <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-neutral-100 dark:bg-neutral-800 border border-neutral-200/80 dark:border-neutral-700/80">
+                        <img
+                          src={coverUrl}
+                          alt=""
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            console.error('Cover image failed to load:', {
+                              url: coverUrl,
+                              coverImage: post.cover_image,
+                            });
+                            (e.target as HTMLElement).style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    )}
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-2 text-[11px] text-neutral-400 font-mono">
+                        <span>{post.tags[0] || 'Article'}</span>
+                        <span aria-hidden="true">·</span>
+                        <span className="tabular-nums">
+                          {new Date(post.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </span>
+                      </div>
+                      <h4 className="text-sm font-serif font-bold text-neutral-900 dark:text-neutral-100 group-hover:text-neutral-700 dark:group-hover:text-white transition-colors truncate">
+                        {post.title}
+                      </h4>
+                      <p className="text-xs text-neutral-500 line-clamp-1">
+                        {post.excerpt || post.markdown.substring(0, 100)}
+                      </p>
+                    </div>
                   </div>
-                  <h4 className="text-sm font-serif font-bold text-neutral-900 dark:text-neutral-100 group-hover:text-neutral-700 dark:group-hover:text-white transition-colors">
-                    {post.title}
-                  </h4>
-                  <p className="text-xs text-neutral-500 line-clamp-1">
-                    {post.excerpt || post.markdown.substring(0, 100)}
-                  </p>
+                  <ArrowRight className="w-4 h-4 text-neutral-400 group-hover:text-neutral-900 dark:group-hover:text-white shrink-0 group-hover:translate-x-0.5 transition-all" />
                 </div>
-                <ArrowRight className="w-4 h-4 text-neutral-400 group-hover:text-neutral-900 dark:group-hover:text-white shrink-0 mt-2 group-hover:translate-x-0.5 transition-all" />
-              </div>
-            ))
+              );
+            })
           ) : (
             <div className="py-12 text-center space-y-2">
               <BookOpen className="w-8 h-8 text-neutral-400 mx-auto stroke-1" />

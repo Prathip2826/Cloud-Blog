@@ -244,6 +244,11 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS bio TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'writer';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW());
+
 CREATE TABLE IF NOT EXISTS public.posts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   author UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -307,9 +312,11 @@ CREATE POLICY "Authenticated users can create comments" ON public.comments FOR I
 CREATE POLICY "Users can delete own comments" ON public.comments FOR DELETE USING (auth.uid() = user_id);
 CREATE POLICY "Admins can delete any comment" ON public.comments FOR DELETE USING (public.is_admin());
 
-INSERT INTO storage.buckets (id, name, public) VALUES ('blog-images', 'blog-images', true) ON CONFLICT (id) DO NOTHING;
+INSERT INTO storage.buckets (id, name, public) VALUES ('blog-images', 'blog-images', true) ON CONFLICT (id) DO UPDATE SET public = true;
 CREATE POLICY "Public Read blog-images" ON storage.objects FOR SELECT USING (bucket_id = 'blog-images');
-CREATE POLICY "Authenticated Upload blog-images" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'blog-images' AND auth.role() = 'authenticated');
+CREATE POLICY "Authenticated users can upload to own folder" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'blog-images' AND auth.uid()::text = (storage.foldername(name))[1]);
+CREATE POLICY "Users can update own files in blog-images" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'blog-images' AND auth.uid()::text = (storage.foldername(name))[1]) WITH CHECK (bucket_id = 'blog-images' AND auth.uid()::text = (storage.foldername(name))[1]);
+CREATE POLICY "Users Delete Own Images" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'blog-images' AND auth.uid()::text = (storage.foldername(name))[1]);
 `;
                       await navigator.clipboard.writeText(sql);
                       setCopiedSql(true);
