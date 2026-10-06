@@ -2,13 +2,19 @@
 
 A production-grade, cloud-based editorial publication platform designed for high performance, uncompromising security, and typographic elegance.
 
-Architecture:
-- **Frontend / Client**: React 19 + TypeScript + Tailwind CSS (App Router & Vite compatible)
+- 🌐 **Live Application**: [https://cloud-blog-tan.vercel.app/](https://cloud-blog-tan.vercel.app/)
+- 💻 **GitHub Repository**: [https://github.com/Prathip2826/Cloud-Blog](https://github.com/Prathip2826/Cloud-Blog)
+
+---
+
+## Architecture Overview
+
+- **Frontend / Client**: React 19 + TypeScript + Tailwind CSS
 - **Authentication**: Supabase Auth (Session management, user roles, password reset, protected dashboards)
 - **Database**: Supabase PostgreSQL with strict Row Level Security (RLS) policies
 - **Media Storage**: Supabase Storage (`blog-images` bucket with MIME & size validation)
 - **Rendering**: Safe dynamic Markdown with GFM, syntax formatting, and custom typography
-- **Deployment**: Vercel-ready with zero-config edge hosting
+- **Deployment**: Vercel & Google Cloud Run ready with edge hosting & container support
 
 ---
 
@@ -84,20 +90,59 @@ The server will boot on `http://localhost:3000`.
 
 ---
 
-## 4. Production Build & Vercel Deployment
+## 4. Production Build & Deployment
 
 ### Build Command:
 ```bash
 npm run build
 ```
 
-### Vercel Deployment:
-1. Push your repository to GitHub.
-2. Import project in Vercel.
+### Vercel Deployment (Live Production: https://cloud-blog-tan.vercel.app/)
+1. Push your repository to GitHub: `https://github.com/Prathip2826/Cloud-Blog`.
+2. Import project into [Vercel](https://vercel.com).
 3. In Vercel Project Settings -> **Environment Variables**, add:
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-4. Click **Deploy**.
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+4. Click **Deploy**. The application is live at [https://cloud-blog-tan.vercel.app/](https://cloud-blog-tan.vercel.app/).
+
+### Google Cloud Run Deployment
+
+#### 1. Secret Management Bindings
+```bash
+# Create and populate Supabase and operational credentials in Secret Manager
+gcloud secrets create SUPABASE_URL --replication-policy="automatic"
+echo -n "https://your-project.supabase.co" | gcloud secrets versions add SUPABASE_URL --data-file=-
+
+gcloud secrets create SUPABASE_ANON_KEY --replication-policy="automatic"
+echo -n "your-anon-key" | gcloud secrets versions add SUPABASE_ANON_KEY --data-file=-
+
+# Grant Cloud Run service account access to secrets
+gcloud secrets add-iam-policy-binding SUPABASE_URL \
+  --member="serviceAccount:YOUR_PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+
+gcloud secrets add-iam-policy-binding SUPABASE_ANON_KEY \
+  --member="serviceAccount:YOUR_PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+```
+
+#### 2. Deploy Container to Cloud Run
+```bash
+gcloud run deploy chronicle-blog \
+  --source . \
+  --region asia-southeast1 \
+  --allow-unauthenticated \
+  --set-secrets="VITE_SUPABASE_URL=SUPABASE_URL:latest,VITE_SUPABASE_ANON_KEY=SUPABASE_ANON_KEY:latest"
+```
+
+#### 3. Verification Binding
+```bash
+gcloud run services update chronicle-blog \
+  --update-labels=dev-tutorial=cloud-run-ai-challenge \
+  --region=asia-southeast1
+```
 
 ---
 
